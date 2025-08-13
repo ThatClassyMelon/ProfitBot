@@ -1,1 +1,1 @@
-web: python run_bot_daemon.py
+worker: python run_bot_daemon.py
