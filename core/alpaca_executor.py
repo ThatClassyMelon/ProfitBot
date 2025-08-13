@@ -12,6 +12,8 @@ from alpaca_trade_api.rest import TimeFrame
 
 from core.enhanced_strategy import TradeSignal, TradeAction
 from core.enhanced_executor import EnhancedTrade, EnhancedTradeExecutor
+from core.fee_calculator import AlpacaFeeCalculator
+from core.retry_handler import RetryHandler
 
 
 class AlpacaExecutor(EnhancedTradeExecutor):
@@ -63,6 +65,13 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             'AVAX/USD': 1.0,
             'MLG/USD': 0.01  # Lower minimum for smaller coins
         }
+        
+        # Initialize fee calculator and retry handler
+        self.fee_calculator = AlpacaFeeCalculator()
+        self.retry_handler = RetryHandler(max_retries=3, base_delay=1.0)
+        
+        # Track failed orders for monitoring
+        self.failed_orders = []
         
         # Verify connection and store account info
         self.account_info = self._verify_connection()
@@ -164,77 +173,172 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             return {}
     
     def _execute_signal(self, signal: TradeSignal, portfolio) -> Optional[EnhancedTrade]:
-        """Execute a trade signal using Alpaca API."""
-        try:
-            symbol = self.get_alpaca_symbol(signal.coin)
-            current_price = self.get_current_price(signal.coin)
+        """Execute a trade signal using Alpaca API with retry logic and fee calculations."""
+        symbol = self.get_alpaca_symbol(signal.coin)
+        current_price = self.get_current_price(signal.coin)
+        
+        if current_price <= 0:
+            print(f"❌ Could not get price for {signal.coin}")
+            return None
+        
+        # Calculate fee-adjusted order value
+        raw_order_value = signal.quantity * current_price
+        
+        # Get fee information
+        fee_info = self.fee_calculator.calculate_trading_fees(symbol, raw_order_value)
+        print(f"📊 Estimated fees for {signal.coin}: ${fee_info['total_fees']:.4f} ({fee_info['fee_percentage']:.3f}%)")
+        
+        # For buy orders, ensure we have enough cash including fees
+        if signal.action == TradeAction.BUY:
+            total_needed = raw_order_value + fee_info['total_fees']
+            available_cash = portfolio.get_usdt_balance()
             
-            if current_price <= 0:
-                print(f"❌ Could not get price for {signal.coin}")
-                return None
-            
-            # Calculate order value
-            order_value = signal.quantity * current_price
-            min_amount = self.min_order_amounts.get(symbol, 1.0)
-            
-            if order_value < min_amount:
-                print(f"❌ Order value ${order_value:.2f} below minimum ${min_amount} for {symbol}")
-                return None
-            
-            # Prepare order
-            side = 'buy' if signal.action == TradeAction.BUY else 'sell'
-            
-            # For crypto, we use notional orders (dollar amounts)
-            order_request = {
-                'symbol': symbol,
-                'side': side,
-                'type': 'market',
-                'time_in_force': 'ioc',  # Immediate or cancel
-                'notional': round(order_value, 2)  # Dollar amount
-            }
-            
-            print(f"🔄 Submitting {side.upper()} order for {symbol}: ${order_value:.2f}")
-            
-            # Submit order
-            order = self.api.submit_order(**order_request)
-            
-            # Wait for order to fill (up to 10 seconds)
-            filled_order = self._wait_for_fill(order.id, timeout=10)
-            
-            if filled_order and filled_order.status == 'filled':
-                # Calculate actual quantity and price from filled order
-                filled_qty = float(filled_order.filled_qty)
-                filled_notional = float(filled_order.filled_avg_price) * filled_qty if filled_order.filled_avg_price else order_value
-                avg_price = filled_notional / filled_qty if filled_qty > 0 else current_price
+            if total_needed > available_cash:
+                # Adjust order size to fit available cash
+                adjusted_order_value = available_cash - (fee_info['total_fees'] * 1.2)  # 20% fee buffer
                 
-                # Update portfolio with actual executed amounts
-                if signal.action == TradeAction.BUY:
-                    portfolio.execute_buy(signal.coin, filled_qty, avg_price)
-                else:
-                    portfolio.execute_sell(signal.coin, filled_qty, avg_price)
+                if adjusted_order_value < self.min_order_amounts.get(symbol, 1.0):
+                    print(f"❌ Insufficient funds for {signal.coin} order (need ${total_needed:.2f}, have ${available_cash:.2f})")
+                    return None
                 
-                # Create trade record
-                trade = EnhancedTrade(
-                    timestamp=datetime.now(),
-                    coin=signal.coin,
-                    action=signal.action.value,
-                    quantity=filled_qty,
-                    price=avg_price,
-                    total_value=filled_notional,
-                    reason=f"{signal.reason} [Alpaca: {order.id}]",
-                    tier=signal.tier
+                print(f"⚠️ Adjusting order size from ${raw_order_value:.2f} to ${adjusted_order_value:.2f} (fee adjustment)")
+                order_value = adjusted_order_value
+            else:
+                order_value = raw_order_value
+        else:
+            order_value = raw_order_value
+        
+        # Check minimum order amount
+        min_amount = self.min_order_amounts.get(symbol, 1.0)
+        if order_value < min_amount:
+            print(f"❌ Order value ${order_value:.2f} below minimum ${min_amount} for {symbol}")
+            return None
+        
+        # For sell orders, check if profitable after fees
+        if signal.action == TradeAction.SELL and signal.coin in portfolio.holdings:
+            holding_info = portfolio.get_holding(signal.coin)
+            if holding_info > 0:
+                # Get last trade price for this coin
+                entry_price = portfolio.last_trade_prices.get(signal.coin, current_price)
+                position_value = holding_info * current_price
+                
+                profitability = self.fee_calculator.is_trade_profitable_after_fees(
+                    entry_price, current_price, symbol, position_value
                 )
                 
-                print(f"✅ {side.upper()} filled: {filled_qty:.6f} {signal.coin} @ ${avg_price:.2f}")
-                return trade
+                print(f"💰 Trade profitability for {signal.coin}:")
+                print(f"   Net P&L: ${profitability['net_pnl']:.4f} ({profitability['profit_margin']:.3f}%)")
+                print(f"   Breakeven: ${profitability['breakeven_price']:.6f}")
                 
+                if not profitability['is_profitable']:
+                    print(f"⚠️ Sell order for {signal.coin} would be unprofitable after fees")
+                    # Still execute if it's a stop-loss to limit further losses
+                    if "stop" not in signal.reason.lower():
+                        return None
+        
+        # Execute order with retry logic
+        def submit_order_with_fees():
+            return self._submit_alpaca_order(symbol, signal, order_value, fee_info, portfolio)
+        
+        result = self.retry_handler.execute_with_retry(
+            submit_order_with_fees,
+            f"{signal.action.value.upper()} order for {signal.coin}"
+        )
+        
+        # Send notifications based on result
+        if result is None:
+            # Trade failed after all retries
+            self._notify_trade_failure(signal, order_value)
+        elif len(self.retry_handler.retry_history) > 0:
+            # Trade succeeded after retries
+            self._notify_retry_success(signal)
+        
+        return result
+    
+    def _submit_alpaca_order(self, symbol: str, signal: TradeSignal, 
+                           order_value: float, fee_info: Dict[str, float], portfolio) -> Optional[EnhancedTrade]:
+        """Submit order to Alpaca API (separated for retry logic)."""
+        side = 'buy' if signal.action == TradeAction.BUY else 'sell'
+        
+        # For crypto, we use notional orders (dollar amounts)
+        order_request = {
+            'symbol': symbol,
+            'side': side,
+            'type': 'market',
+            'time_in_force': 'ioc',  # Immediate or cancel
+            'notional': round(order_value, 2)  # Dollar amount
+        }
+        
+        print(f"🔄 Submitting {side.upper()} order for {symbol}: ${order_value:.2f}")
+        
+        # Submit order
+        order = self.api.submit_order(**order_request)
+        
+        # Wait for order to fill (up to 10 seconds)
+        filled_order = self._wait_for_fill(order.id, timeout=10)
+        
+        if filled_order and filled_order.status == 'filled':
+            # Calculate actual quantity and price from filled order
+            filled_qty = float(filled_order.filled_qty)
+            filled_notional = float(filled_order.filled_avg_price) * filled_qty if filled_order.filled_avg_price else order_value
+            avg_price = filled_notional / filled_qty if filled_qty > 0 else self.get_current_price(signal.coin)
+            
+            # Calculate actual fees paid
+            actual_fees = self.fee_calculator.calculate_trading_fees(symbol, filled_notional)
+            
+            # Update portfolio with actual executed amounts
+            if signal.action == TradeAction.BUY:
+                # For buy orders, we need to know the exact portfolio method signature
+                if hasattr(portfolio, 'execute_buy'):
+                    portfolio.execute_buy(signal.coin, filled_qty, avg_price)
+                else:
+                    # Fallback: manually update portfolio
+                    portfolio.usdt_balance -= filled_notional
+                    portfolio.holdings[signal.coin] = portfolio.holdings.get(signal.coin, 0) + filled_qty
+                    portfolio.last_trade_prices[signal.coin] = avg_price
             else:
-                print(f"❌ Order {order.id} not filled: {filled_order.status if filled_order else 'timeout'}")
-                return None
-                
-        except Exception as e:
-            print(f"❌ Error executing {signal.action.value} for {signal.coin}: {e}")
-            return None
+                # For sell orders
+                if hasattr(portfolio, 'execute_sell'):
+                    portfolio.execute_sell(signal.coin, filled_qty, avg_price)
+                else:
+                    # Fallback: manually update portfolio
+                    portfolio.usdt_balance += filled_notional
+                    portfolio.holdings[signal.coin] = portfolio.holdings.get(signal.coin, 0) - filled_qty
+                    portfolio.last_trade_prices[signal.coin] = avg_price
+            
+            # Create enhanced trade record with fee information
+            trade = EnhancedTrade(
+                timestamp=datetime.now(),
+                coin=signal.coin,
+                action=signal.action.value,
+                quantity=filled_qty,
+                price=avg_price,
+                total_value=filled_notional,
+                reason=f"{signal.reason} [Fees: ${actual_fees['total_fees']:.4f}] [Alpaca: {order.id}]",
+                tier=signal.tier
+            )
+            
+            print(f"✅ {side.upper()} filled: {filled_qty:.6f} {signal.coin} @ ${avg_price:.2f}")
+            print(f"   Total cost: ${filled_notional:.2f}, Fees: ${actual_fees['total_fees']:.4f}")
+            
+            return trade
+            
+        else:
+            error_status = filled_order.status if filled_order else 'timeout'
+            print(f"❌ Order {order.id} not filled: {error_status}")
+            
+            # Track failed order for analysis
+            self.failed_orders.append({
+                'timestamp': datetime.now(),
+                'symbol': symbol,
+                'side': side,
+                'order_value': order_value,
+                'error': error_status,
+                'signal_reason': signal.reason
+            })
+            
+            # Raise exception to trigger retry logic
+            raise Exception(f"Order not filled: {error_status}")
     
     def _wait_for_fill(self, order_id: str, timeout: int = 10) -> Optional[Any]:
         """Wait for order to fill with timeout."""
@@ -356,3 +460,56 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             
         except Exception as e:
             return f"❌ Error generating trading summary: {e}"
+    
+    def _notify_trade_failure(self, signal: TradeSignal, order_value: float):
+        """Send notification about trade failure."""
+        try:
+            if hasattr(self, '_telegram_notifier'):
+                self._telegram_notifier.send_trade_failure_alert({
+                    'coin': signal.coin,
+                    'action': signal.action.value,
+                    'reason': f"Failed after {self.retry_handler.max_retries} retries",
+                    'retry_count': self.retry_handler.max_retries,
+                    'order_value': order_value
+                })
+        except Exception as e:
+            print(f"Failed to send trade failure notification: {e}")
+    
+    def _notify_retry_success(self, signal: TradeSignal):
+        """Send notification about successful retry."""
+        try:
+            if hasattr(self, '_telegram_notifier'):
+                retry_count = len([h for h in self.retry_handler.retry_history 
+                                 if h.timestamp.date() == datetime.now().date()])
+                
+                self._telegram_notifier.send_retry_success_alert({
+                    'coin': signal.coin,
+                    'action': signal.action.value,
+                    'retry_count': retry_count
+                })
+        except Exception as e:
+            print(f"Failed to send retry success notification: {e}")
+    
+    def set_telegram_notifier(self, telegram_notifier):
+        """Set telegram notifier for failure alerts."""
+        self._telegram_notifier = telegram_notifier
+    
+    def get_trading_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive trading statistics including failures."""
+        retry_stats = self.retry_handler.get_retry_stats()
+        
+        return {
+            'total_failed_orders': len(self.failed_orders),
+            'retry_statistics': retry_stats,
+            'recent_failures': self.failed_orders[-5:] if self.failed_orders else [],
+            'success_rate_after_retries': self._calculate_success_rate()
+        }
+    
+    def _calculate_success_rate(self) -> float:
+        """Calculate success rate including retries."""
+        total_attempts = len(self.retry_handler.retry_history) + len(self.trades)
+        if total_attempts == 0:
+            return 0.0
+        
+        successful_trades = len(self.trades)
+        return (successful_trades / total_attempts) * 100

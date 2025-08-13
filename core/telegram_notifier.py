@@ -314,3 +314,61 @@ class TelegramNotifier:
             "💤 Bot is now offline."
         )
         self.send_message(message)
+    
+    def send_trade_failure_alert(self, trade_info: Dict[str, Any]):
+        """Send notification when a trade fails."""
+        try:
+            coin = trade_info.get('coin', 'Unknown')
+            action = trade_info.get('action', 'Unknown')
+            reason = trade_info.get('reason', 'Unknown error')
+            retry_count = trade_info.get('retry_count', 0)
+            
+            message = f"⚠️ *Trade Failure Alert*\n\n"
+            message += f"🪙 Coin: {coin}\n"
+            message += f"🔄 Action: {action.upper()}\n"
+            message += f"❌ Reason: {reason}\n"
+            
+            if retry_count > 0:
+                message += f"🔁 Retries: {retry_count}\n"
+            
+            message += f"\n⏰ Time: {datetime.now().strftime('%H:%M:%S')}"
+            
+            self.send_message(message)
+        except Exception as e:
+            print(f"Failed to send trade failure alert: {e}")
+    
+    def send_fee_alert(self, fee_info: Dict[str, Any]):
+        """Send notification about high fees or fee-related issues."""
+        try:
+            coin = fee_info.get('coin', 'Unknown')
+            fee_percentage = fee_info.get('fee_percentage', 0)
+            trade_value = fee_info.get('trade_value', 0)
+            
+            message = f"💸 *High Fee Alert*\n\n"
+            message += f"🪙 Coin: {coin}\n"
+            message += f"💰 Trade Value: ${trade_value:.2f}\n"
+            message += f"📊 Fee Percentage: {fee_percentage:.3f}%\n"
+            
+            if fee_percentage > 1.0:  # Alert if fees are over 1%
+                message += "\n⚠️ Fees are unusually high for this trade!"
+            
+            self.send_message(message)
+        except Exception as e:
+            print(f"Failed to send fee alert: {e}")
+    
+    def send_retry_success_alert(self, retry_info: Dict[str, Any]):
+        """Send notification when a failed trade succeeds on retry."""
+        try:
+            coin = retry_info.get('coin', 'Unknown')
+            action = retry_info.get('action', 'Unknown')
+            retry_count = retry_info.get('retry_count', 0)
+            
+            message = f"✅ *Retry Success!*\n\n"
+            message += f"🪙 Coin: {coin}\n"
+            message += f"🔄 Action: {action.upper()}\n"
+            message += f"🔁 Succeeded after {retry_count} retries\n"
+            message += f"\n⏰ Time: {datetime.now().strftime('%H:%M:%S')}"
+            
+            self.send_message(message)
+        except Exception as e:
+            print(f"Failed to send retry success alert: {e}")

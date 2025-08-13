@@ -241,7 +241,28 @@ class OptimizedMomentumStrategy:
                     # Bullish momentum - Long entry
                     if portfolio:
                         balance = portfolio.get_usdt_balance()
-                        trade_amount = balance * 0.1  # 10% of balance per trade
+                        
+                        # Use fee-aware position sizing (import fee calculator if available)
+                        try:
+                            from core.fee_calculator import AlpacaFeeCalculator
+                            fee_calc = AlpacaFeeCalculator()
+                            symbol = f"{coin}/USD"  # Convert to Alpaca format
+                            
+                            # Calculate optimal position size accounting for fees
+                            adjusted_amount, fee_info = fee_calc.adjust_position_size_for_fees(
+                                symbol, balance, target_percentage=0.1
+                            )
+                            
+                            if adjusted_amount > 0:
+                                print(f"💰 Fee-adjusted position for {coin}: ${adjusted_amount:.2f} (fees: ${fee_info['estimated_fees']:.4f})")
+                                trade_amount = adjusted_amount
+                            else:
+                                print(f"⚠️ Position too small after fee adjustment for {coin}")
+                                continue
+                                
+                        except ImportError:
+                            # Fallback to simple calculation
+                            trade_amount = balance * 0.1  # 10% of balance per trade
                         
                         if trade_amount >= 10.0:  # Minimum trade size
                             quantity = trade_amount / current_price

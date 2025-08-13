@@ -4,7 +4,8 @@
       "Bash(mkdir:*)",
       "WebFetch(domain:www.coingecko.com)",
       "Bash(python:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(git add:*)"
     ],
     "deny": []
   }

@@ -73,6 +73,11 @@ class ProfitBot:
                     chat_id=telegram_config.get('chat_id') or None
                 )
                 print("📱 Telegram notifications enabled")
+                
+                # Connect telegram to executor for failure alerts
+                if hasattr(self.executor, 'set_telegram_notifier'):
+                    self.executor.set_telegram_notifier(self.telegram)
+                    
             except Exception as e:
                 print(f"⚠️ Telegram setup failed: {e}")
                 self.telegram = None
