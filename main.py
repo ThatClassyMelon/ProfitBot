@@ -38,13 +38,8 @@ class ProfitBot:
         # Initialize components
         self.logger = TradingLogger(self.config)
         self.simulator = RealTimePriceSimulator(self.config)
-        self.portfolio = Portfolio(self.config['initial_balance'])
         
-        # Use optimized strategy (only available strategy)
-        self.strategy = OptimizedMomentumStrategy(self.config)
-        print("🚀 Using Optimized Momentum Scalp Strategy")
-        
-        # Choose executor based on configuration
+        # Choose executor based on configuration first
         alpaca_config = self.config.get('alpaca', {})
         if (alpaca_config.get('use_paper_trading', False) and 
             alpaca_config.get('api_key') and 
@@ -52,10 +47,22 @@ class ProfitBot:
             print("🏦 Using Alpaca Paper Trading")
             self.executor = AlpacaExecutor(self.config)
             self.using_alpaca = True
+            
+            # Use real Alpaca account balance
+            real_balance = self.executor.get_account_balance()
+            self.portfolio = Portfolio(real_balance)
+            print(f"💰 Synced with Alpaca balance: ${real_balance:,.2f}")
         else:
             print("🎲 Using Mock Trading (Simulation)")
             self.executor = EnhancedTradeExecutor(self.config)
             self.using_alpaca = False
+            
+            # Use config balance for simulation
+            self.portfolio = Portfolio(self.config['initial_balance'])
+        
+        # Use optimized strategy (only available strategy)
+        self.strategy = OptimizedMomentumStrategy(self.config)
+        print("🚀 Using Optimized Momentum Scalp Strategy")
         
         # Initialize Telegram notifications
         telegram_config = self.config.get('telegram', {})

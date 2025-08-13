@@ -64,19 +64,34 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             'MLG/USD': 0.01  # Lower minimum for smaller coins
         }
         
-        # Verify connection
-        self._verify_connection()
+        # Verify connection and store account info
+        self.account_info = self._verify_connection()
     
-    def _verify_connection(self) -> None:
-        """Verify connection to Alpaca API."""
+    def _verify_connection(self) -> Dict[str, Any]:
+        """Verify connection to Alpaca API and return account info."""
         try:
             account = self.api.get_account()
             print(f"✅ Connected to Alpaca Paper Trading")
             print(f"   Account Status: {account.status}")
             print(f"   Buying Power: ${float(account.buying_power):,.2f}")
             print(f"   Portfolio Value: ${float(account.portfolio_value):,.2f}")
+            
+            return {
+                'buying_power': float(account.buying_power),
+                'portfolio_value': float(account.portfolio_value),
+                'status': account.status
+            }
         except Exception as e:
             raise ConnectionError(f"Failed to connect to Alpaca API: {e}")
+    
+    def get_account_balance(self) -> float:
+        """Get current account balance (buying power) from Alpaca."""
+        try:
+            account = self.api.get_account()
+            return float(account.buying_power)
+        except Exception as e:
+            print(f"Error getting account balance: {e}")
+            return self.account_info.get('buying_power', 1000.0)
     
     def get_alpaca_symbol(self, coin: str) -> str:
         """Convert ProfitBot coin symbol to Alpaca symbol."""
