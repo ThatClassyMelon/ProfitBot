@@ -4,10 +4,10 @@
 # Initial portfolio settings
 initial_balance: 1000.0  # Starting USDT balance
 
-# Strategy selection
-strategy_mode: "optimized"  # "optimized" for momentum scalp, "multi_signal" for original
+# Strategy selection (only optimized strategy available)
+strategy_mode: "optimized"  # Optimized momentum scalp strategy
 
-# Coins to track and trade
+# Coins to track and trade (only Alpaca-supported coins)
 coins:
   BTC:
     initial_price: 30000.0
@@ -21,9 +21,6 @@ coins:
   XRP:
     initial_price: 0.5
     volatility: 0.15  # 3.5% volatility factor
-  MLG:
-    initial_price: 0.001  # Starting price for simulation
-    volatility: 0.20  # 4% volatility (higher for meme coins)
 
 # Enhanced Trading Strategy Settings
 strategy:
@@ -69,39 +66,28 @@ strategy:
     greed: 1.15          # More conservative (higher thresholds) during greed
     extreme_greed: 1.4   # Much more conservative during extreme greed
 
-# API settings for real price data
+# API settings (CoinGecko removed - using Alpaca for data)
 api:
   use_real_prices: true  # Set to false to use simulation mode
-  price_update_interval: 15.0  # Seconds between real price updates (min 10s for CoinGecko)
-  api_key: "CG-sfvECq9D4jMZiZ45FDVFti4N"  # Optional: CoinGecko API key for higher rate limits (Demo: 30 calls/min)
+  price_update_interval: 15.0  # Seconds between price updates
 
 # Alpaca Markets paper trading settings
+# Set these as environment variables: ALPACA_API_KEY, ALPACA_SECRET_KEY
 alpaca:
-  api_key: "PKVMXMV0XBIFKAD4YASG"  # Get from https://app.alpaca.markets/paper/dashboard/overview
-  secret_key: "8Y2yE6i0GeEdqciCT2Aodm5rcRykOTf8YtuEsOtY"
+  api_key: ""  # Set via ALPACA_API_KEY environment variable
+  secret_key: ""  # Set via ALPACA_SECRET_KEY environment variable
   base_url: "https://paper-api.alpaca.markets"  # Paper trading URL
   use_paper_trading: true  # Set to false for live trading (NOT RECOMMENDED without testing)
 
 # Telegram notifications
+# Set bot_token as environment variable: TELEGRAM_BOT_TOKEN
 telegram:
-  bot_token: "8124721803:AAEQta9AouecKLxqqeynK3ahDcYpQEMZ7zM"
-  chat_id: ""  # Leave empty - will auto-detect when you send a message to the bot
+  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN environment variable
+  chat_id: ""  # Set via TELEGRAM_CHAT_ID environment variable (or leave empty for auto-detect)
   enable_notifications: true
   hourly_updates: true
   trade_alerts: true
 
-# VectorBT backtesting settings
-backtesting:
-  initial_balance: 10000.0  # Starting balance for backtests
-  commission: 0.001  # 0.1% commission per trade
-  slippage: 0.001  # 0.1% slippage simulation
-  default_days: 30  # Default days of historical data for backtesting
-  
-  # Parameter optimization ranges
-  optimization_ranges:
-    movement_threshold: [0.02, 0.03, 0.04, 0.05]
-    min_signal_strength: [0.3, 0.4, 0.5, 0.6]
-    adaptive_k_factor: [1.0, 1.5, 2.0, 2.5]
 
 # Simulation settings (used when use_real_prices is false)
 simulation:

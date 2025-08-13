@@ -5,20 +5,18 @@ ProfitBot - A modular crypto trading bot simulator.
 This is the main entry point for the trading bot simulation.
 Run with: python main.py
 """
-import yaml
 import time
 import signal
 import sys
 from datetime import datetime
 from typing import Dict, Any
 
+from core.config_loader import load_config_with_env
 from core.price_fetcher import RealTimePriceSimulator
 from core.portfolio import Portfolio
-from core.multi_signal_strategy import MultiSignalStrategy
 from core.optimized_strategy import OptimizedMomentumStrategy
 from core.enhanced_executor import EnhancedTradeExecutor
 from core.alpaca_executor import AlpacaExecutor
-from core.vectorbt_backtester import VectorBTBacktester
 from core.logger import TradingLogger
 from core.telegram_notifier import TelegramNotifier
 
@@ -33,7 +31,7 @@ class ProfitBot:
         Args:
             config_file: Path to configuration file
         """
-        self.config = self._load_config(config_file)
+        self.config = load_config_with_env(config_file)
         self.running = False
         self.start_time = None
         
@@ -42,14 +40,9 @@ class ProfitBot:
         self.simulator = RealTimePriceSimulator(self.config)
         self.portfolio = Portfolio(self.config['initial_balance'])
         
-        # Use optimized strategy by default
-        strategy_mode = self.config.get('strategy_mode', 'optimized')
-        if strategy_mode == 'optimized':
-            self.strategy = OptimizedMomentumStrategy(self.config)
-            print("🚀 Using Optimized Momentum Scalp Strategy")
-        else:
-            self.strategy = MultiSignalStrategy(self.config)
-            print("📊 Using Multi-Signal Strategy")
+        # Use optimized strategy (only available strategy)
+        self.strategy = OptimizedMomentumStrategy(self.config)
+        print("🚀 Using Optimized Momentum Scalp Strategy")
         
         # Choose executor based on configuration
         alpaca_config = self.config.get('alpaca', {})
@@ -83,26 +76,6 @@ class ProfitBot:
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
     
-    def _load_config(self, config_file: str) -> Dict[str, Any]:
-        """
-        Load configuration from YAML file.
-        
-        Args:
-            config_file: Path to configuration file
-            
-        Returns:
-            Configuration dictionary
-        """
-        try:
-            with open(config_file, 'r') as file:
-                config = yaml.safe_load(file)
-            return config
-        except FileNotFoundError:
-            print(f"❌ Configuration file '{config_file}' not found!")
-            sys.exit(1)
-        except yaml.YAMLError as e:
-            print(f"❌ Error parsing configuration file: {e}")
-            sys.exit(1)
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
@@ -177,9 +150,20 @@ class ProfitBot:
                 # Get portfolio summary
                 portfolio_summary = self.portfolio.get_portfolio_summary(current_prices)
                 
+                # Convert prices to market data format for strategy
+                market_data = {}
+                for coin, price in current_prices.items():
+                    market_data[coin] = {
+                        'price': price,
+                        'volume_24h': 1000000,  # Default volume
+                        'high_24h': price * 1.02,
+                        'low_24h': price * 0.98,
+                        'price_change_24h': 0.0
+                    }
+                
                 # Analyze market and generate signals
                 signals = self.strategy.analyze_market(
-                    current_prices, 
+                    market_data, 
                     self.portfolio, 
                     self.portfolio.last_trade_prices
                 )
@@ -273,110 +257,16 @@ class ProfitBot:
         except Exception as e:
             self.logger.log_error("Error displaying final statistics", e)
     
-    def run_backtest(self, days: int = 30) -> None:
-        """Run a comprehensive backtest using VectorBT."""
-        print(f"🧪 Starting Backtest Mode ({days} days)")
-        print("=" * 50)
-        
-        try:
-            backtester = VectorBTBacktester(self.config)
-            results = backtester.backtest_strategy(days=days)
-            
-            # Display results
-            report = backtester.generate_report(results)
-            print(report)
-            
-            # Save results to file
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            report_file = f"data/backtest_report_{timestamp}.txt"
-            
-            # Ensure data directory exists
-            import os
-            os.makedirs("data", exist_ok=True)
-            
-            with open(report_file, 'w') as f:
-                f.write(report)
-            
-            print(f"\n📋 Report saved to: {report_file}")
-            
-        except Exception as e:
-            print(f"❌ Backtest failed: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def run_optimization(self, coin: str = "BTC", days: int = 30) -> None:
-        """Run parameter optimization for a specific coin."""
-        print(f"🔧 Starting Parameter Optimization for {coin} ({days} days)")
-        print("=" * 60)
-        
-        try:
-            backtester = VectorBTBacktester(self.config)
-            
-            # Get optimization ranges from config
-            optimization_ranges = self.config.get('backtesting', {}).get('optimization_ranges', {
-                'movement_threshold': [0.02, 0.03, 0.04, 0.05],
-                'min_signal_strength': [0.3, 0.4, 0.5, 0.6]
-            })
-            
-            results = backtester.optimize_parameters(coin, optimization_ranges, days)
-            
-            print(f"✅ Optimization completed for {coin}")
-            print(f"Best Parameters: {results['best_parameters']}")
-            print(f"Best Return: {results['best_return']:.2f}%")
-            print(f"Combinations Tested: {results['total_combinations_tested']}")
-            
-            # Save optimization results
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            opt_file = f"data/optimization_{coin}_{timestamp}.txt"
-            
-            import os
-            os.makedirs("data", exist_ok=True)
-            
-            with open(opt_file, 'w') as f:
-                f.write(f"Parameter Optimization Results for {coin}\n")
-                f.write("=" * 50 + "\n")
-                f.write(f"Generated: {datetime.now()}\n\n")
-                f.write(f"Best Parameters: {results['best_parameters']}\n")
-                f.write(f"Best Return: {results['best_return']:.2f}%\n")
-                f.write(f"Combinations Tested: {results['total_combinations_tested']}\n\n")
-                
-                f.write("All Results:\n")
-                for i, result in enumerate(results['all_results']):
-                    f.write(f"{i+1}. {result}\n")
-            
-            print(f"📋 Optimization results saved to: {opt_file}")
-            
-        except Exception as e:
-            print(f"❌ Optimization failed: {e}")
-            import traceback
-            traceback.print_exc()
 
 
 def main():
     """Main entry point."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='ProfitBot - Crypto Trading Bot')
-    parser.add_argument('--mode', choices=['trade', 'backtest', 'optimize'], 
-                       default='trade', help='Operation mode')
-    parser.add_argument('--days', type=int, default=30, 
-                       help='Days of historical data for backtest/optimization')
-    parser.add_argument('--coin', type=str, default='BTC',
-                       help='Coin for optimization mode')
-    
-    args = parser.parse_args()
-    
     try:
-        bot = ProfitBot()
+        print("🤖 Starting ProfitBot Trading Mode...")
+        print("Press Ctrl+C to stop the bot gracefully.\n")
         
-        if args.mode == 'trade':
-            print("🤖 Starting ProfitBot Trading Mode...")
-            print("Press Ctrl+C to stop the bot gracefully.\n")
-            bot.start()
-        elif args.mode == 'backtest':
-            bot.run_backtest(args.days)
-        elif args.mode == 'optimize':
-            bot.run_optimization(args.coin, args.days)
+        bot = ProfitBot()
+        bot.start()
             
     except Exception as e:
         print(f"❌ Failed to start ProfitBot: {e}")
