@@ -1,0 +1,115 @@
+# ProfitBot Configuration
+# Trading simulation settings
+
+# Initial portfolio settings
+initial_balance: 1000.0  # Starting USDT balance
+
+# Strategy selection
+strategy_mode: "optimized"  # "optimized" for momentum scalp, "multi_signal" for original
+
+# Coins to track and trade
+coins:
+  BTC:
+    initial_price: 30000.0
+    volatility: 0.08  # 2% volatility factor
+  ETH:
+    initial_price: 2000.0
+    volatility: 0.1  # 2.5% volatility factor
+  SOL:
+    initial_price: 100.0
+    volatility: 0.12  # 3% volatility factor
+  XRP:
+    initial_price: 0.5
+    volatility: 0.15  # 3.5% volatility factor
+  MLG:
+    initial_price: 0.001  # Starting price for simulation
+    volatility: 0.20  # 4% volatility (higher for meme coins)
+
+# Enhanced Trading Strategy Settings
+strategy:
+  # Legacy parameters (kept for compatibility)
+  movement_threshold: 0.03  # Base threshold (now adaptive per coin)
+  trade_amount_percentage: 0.1  # Base trade percentage for sells
+  min_trade_amount: 10.0  # Minimum trade amount in USDT
+  
+  # 🧠 ADAPTIVE THRESHOLDS
+  adaptive_k_factor: 1.5  # Multiplier for volatility-based thresholds
+  # Formula: threshold = coin_volatility * k_factor
+  
+  # 🔄 SMART BASELINE UPDATES  
+  baseline_update_weight: 0.3  # Weight for baseline updates (0.3 = 30% new price, 70% old)
+  
+  # 📈 MOMENTUM FILTER
+  momentum_threshold: 0.0  # Only buy if momentum >= this value (0 = no falling knife)
+  
+  # 📊 TIERED DCA SYSTEM
+  dca_multipliers: [0.10, 0.15, 0.20]  # Trade sizes: 10%, 15%, 20% of balance
+  # First buy: 10%, Second DCA: 15%, Third DCA: 20%
+  
+  # ⏰ TIMED SELL FALLBACK
+  timed_sell_threshold: 0.015  # 1.5% - sell if held too long and up this much
+  timed_sell_percentage: 0.05  # 5% - sell this portion during timed sells
+  max_hold_ticks: 300  # 300 seconds (5 minutes) max hold time
+  
+  # 💰 PROFIT REBALANCING
+  rebalance_profit_threshold: 0.01  # Rebalance when portfolio grows 1%
+  rebalance_percentage: 0.10  # Sell 10% of all holdings during rebalance
+  
+  # 🔬 MULTI-SIGNAL ANALYSIS
+  min_signal_strength: 0.3  # Minimum signal strength to trigger trades (0.0-1.0)
+  min_volume_threshold: 1000000  # Minimum $1M daily volume for trades
+  rsi_overbought: 70  # RSI overbought level
+  rsi_oversold: 30   # RSI oversold level
+  
+  # 😱 FEAR & GREED ADJUSTMENTS
+  fear_greed_multipliers:
+    extreme_fear: 0.7    # More aggressive (lower thresholds) during extreme fear
+    fear: 0.85           # Slightly more aggressive during fear
+    neutral: 1.0         # Normal thresholds when neutral
+    greed: 1.15          # More conservative (higher thresholds) during greed
+    extreme_greed: 1.4   # Much more conservative during extreme greed
+
+# API settings for real price data
+api:
+  use_real_prices: true  # Set to false to use simulation mode
+  price_update_interval: 15.0  # Seconds between real price updates (min 10s for CoinGecko)
+  api_key: "CG-sfvECq9D4jMZiZ45FDVFti4N"  # Optional: CoinGecko API key for higher rate limits (Demo: 30 calls/min)
+
+# Alpaca Markets paper trading settings
+alpaca:
+  api_key: "PKVMXMV0XBIFKAD4YASG"  # Get from https://app.alpaca.markets/paper/dashboard/overview
+  secret_key: "8Y2yE6i0GeEdqciCT2Aodm5rcRykOTf8YtuEsOtY"
+  base_url: "https://paper-api.alpaca.markets"  # Paper trading URL
+  use_paper_trading: true  # Set to false for live trading (NOT RECOMMENDED without testing)
+
+# Telegram notifications
+telegram:
+  bot_token: "8124721803:AAEQta9AouecKLxqqeynK3ahDcYpQEMZ7zM"
+  chat_id: ""  # Leave empty - will auto-detect when you send a message to the bot
+  enable_notifications: true
+  hourly_updates: true
+  trade_alerts: true
+
+# VectorBT backtesting settings
+backtesting:
+  initial_balance: 10000.0  # Starting balance for backtests
+  commission: 0.001  # 0.1% commission per trade
+  slippage: 0.001  # 0.1% slippage simulation
+  default_days: 30  # Default days of historical data for backtesting
+  
+  # Parameter optimization ranges
+  optimization_ranges:
+    movement_threshold: [0.02, 0.03, 0.04, 0.05]
+    min_signal_strength: [0.3, 0.4, 0.5, 0.6]
+    adaptive_k_factor: [1.0, 1.5, 2.0, 2.5]
+
+# Simulation settings (used when use_real_prices is false)
+simulation:
+  tick_interval: 1.0  # Seconds between price updates
+  price_update_factor: 0.005  # Max price change per tick (0.5%)
+  
+# Logging settings
+logging:
+  log_file: "data/trading.log"
+  trade_history_file: "data/trade_history.csv"
+  log_level: "INFO"
