@@ -298,7 +298,7 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             account_info = self.get_account_info()
             
             # Update cash balance
-            portfolio.balance = account_info.get('cash', portfolio.balance)
+            # Note: Portfolio balance is managed separately, account info is for reference
             
             # Update holdings
             alpaca_holdings = account_info.get('holdings', {})
@@ -314,7 +314,7 @@ class AlpacaExecutor(EnhancedTradeExecutor):
                     portfolio.prices[coin] = current_price
             
             print(f"✅ Portfolio synced with Alpaca")
-            print(f"   Cash: ${portfolio.balance:.2f}")
+            print(f"   Cash: ${portfolio.get_usdt_balance():.2f}")
             print(f"   Holdings: {list(portfolio.holdings.keys())}")
             
         except Exception as e:

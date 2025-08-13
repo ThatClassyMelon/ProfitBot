@@ -240,7 +240,7 @@ class OptimizedMomentumStrategy:
                 if momentum > self.momentum_threshold:
                     # Bullish momentum - Long entry
                     if portfolio:
-                        balance = portfolio.balance
+                        balance = portfolio.get_usdt_balance()
                         trade_amount = balance * 0.1  # 10% of balance per trade
                         
                         if trade_amount >= 10.0:  # Minimum trade size
