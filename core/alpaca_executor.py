@@ -49,8 +49,7 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             'ADA': 'ADA/USD',
             'DOT': 'DOT/USD',
             'MATIC': 'MATIC/USD',
-            'AVAX': 'AVAX/USD',
-            'MLG': 'MLG/USD'  # Custom coin - will fall back to simulation if not available
+            'AVAX': 'AVAX/USD'
         }
         
         # Minimum order amounts for crypto (in USD)
@@ -62,8 +61,7 @@ class AlpacaExecutor(EnhancedTradeExecutor):
             'ADA/USD': 1.0,
             'DOT/USD': 1.0,
             'MATIC/USD': 1.0,
-            'AVAX/USD': 1.0,
-            'MLG/USD': 0.01  # Lower minimum for smaller coins
+            'AVAX/USD': 1.0
         }
         
         # Initialize fee calculator and retry handler

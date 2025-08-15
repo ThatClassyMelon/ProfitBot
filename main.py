@@ -15,6 +15,7 @@ from core.config_loader import load_config_with_env
 from core.price_fetcher import RealTimePriceSimulator
 from core.portfolio import Portfolio
 from core.optimized_strategy import OptimizedMomentumStrategy
+from core.multi_coin_strategy import MultiCoinStrategy
 from core.enhanced_executor import EnhancedTradeExecutor
 from core.alpaca_executor import AlpacaExecutor
 from core.logger import TradingLogger
@@ -60,9 +61,9 @@ class ProfitBot:
             # Use config balance for simulation
             self.portfolio = Portfolio(self.config['initial_balance'])
         
-        # Use optimized strategy (only available strategy)
-        self.strategy = OptimizedMomentumStrategy(self.config)
-        print("🚀 Using Optimized Momentum Scalp Strategy")
+        # Use multi-coin strategy system (coin-specific strategies)
+        self.strategy = MultiCoinStrategy(self.config)
+        print("🚀 Using Multi-Coin Strategy System")
         
         # Initialize Telegram notifications
         telegram_config = self.config.get('telegram', {})

@@ -19,6 +19,8 @@ class Portfolio:
         self.holdings: Dict[str, float] = {}  # coin -> quantity
         self.last_trade_prices: Dict[str, float] = {}  # coin -> last trade price
         self.initial_balance = initial_balance
+        self.initial_portfolio_value = initial_balance  # Track initial total value
+        self.portfolio_initialized = False
     
     def get_usdt_balance(self) -> float:
         """
@@ -189,8 +191,14 @@ class Portfolio:
             Portfolio summary dictionary
         """
         total_value = self.calculate_portfolio_value(current_prices)
-        profit_loss = total_value - self.initial_balance
-        profit_loss_percent = (profit_loss / self.initial_balance) * 100 if self.initial_balance > 0 else 0
+        
+        # Initialize baseline on first call
+        if not self.portfolio_initialized:
+            self.initial_portfolio_value = total_value
+            self.portfolio_initialized = True
+        
+        profit_loss = total_value - self.initial_portfolio_value
+        profit_loss_percent = (profit_loss / self.initial_portfolio_value) * 100 if self.initial_portfolio_value > 0 else 0
         
         holdings_value = {}
         for coin, quantity in self.holdings.items():

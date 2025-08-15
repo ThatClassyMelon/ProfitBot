@@ -53,7 +53,7 @@ strategy:
   rebalance_percentage: 0.10  # Sell 10% of all holdings during rebalance
   
   # 🔬 MULTI-SIGNAL ANALYSIS
-  min_signal_strength: 0.3  # Minimum signal strength to trigger trades (0.0-1.0)
+  min_signal_strength: 0.2  # Minimum signal strength to trigger trades (0.0-1.0)
   min_volume_threshold: 1000000  # Minimum $1M daily volume for trades
   rsi_overbought: 70  # RSI overbought level
   rsi_oversold: 30   # RSI oversold level

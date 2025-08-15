@@ -38,11 +38,11 @@ class OptimizedMomentumStrategy:
         # Strategy parameters (optimized from backtesting)
         self.ema_fast = 5
         self.ema_slow = 13
-        self.momentum_threshold = 0.005  # 0.5%
+        self.momentum_threshold = 0.001  # 0.1% - much more sensitive
         self.take_profit_pct = 0.01      # 1%
         self.stop_loss_pct = 0.005       # 0.5%
-        self.max_hold_periods = 8        # Quick exits
-        self.volume_filter = 1.5         # 1.5x average volume
+        self.max_hold_periods = 15       # Hold a bit longer for small moves
+        self.volume_filter = 1.2         # 1.2x average volume - less restrictive
         
         # Position tracking
         self.positions: Dict[str, Dict] = {}
@@ -109,8 +109,39 @@ class OptimizedMomentumStrategy:
         
         return current_volume >= avg_volume * self.volume_filter
     
-    def get_momentum_signal(self, coin: str) -> float:
-        """Get momentum signal strength."""
+    def calculate_rsi(self, prices: deque, period: int = 14) -> float:
+        """Calculate RSI indicator."""
+        if len(prices) < period + 1:
+            return 50.0  # Neutral RSI
+        
+        prices_list = list(prices)[-period-1:]
+        gains = []
+        losses = []
+        
+        for i in range(1, len(prices_list)):
+            change = prices_list[i] - prices_list[i-1]
+            if change > 0:
+                gains.append(change)
+                losses.append(0)
+            else:
+                gains.append(0)
+                losses.append(abs(change))
+        
+        if len(gains) < period:
+            return 50.0
+        
+        avg_gain = sum(gains[-period:]) / period
+        avg_loss = sum(losses[-period:]) / period
+        
+        if avg_loss == 0:
+            return 100.0
+        
+        rs = avg_gain / avg_loss
+        rsi = 100 - (100 / (1 + rs))
+        return rsi
+
+    def get_momentum_signal(self, coin: str, market_data: Dict[str, Any] = None) -> float:
+        """Get comprehensive momentum signal strength including RSI."""
         if len(self.ema_fast_history[coin]) < 2 or len(self.ema_slow_history[coin]) < 2:
             return 0.0
         
@@ -128,11 +159,27 @@ class OptimizedMomentumStrategy:
         # Check for crossover
         crossover_strength = 0.0
         if ema_fast_prev <= ema_slow_prev and ema_fast_current > ema_slow_current:
-            crossover_strength = 0.5  # Bullish crossover
+            crossover_strength = 0.3  # Bullish crossover
         elif ema_fast_prev >= ema_slow_prev and ema_fast_current < ema_slow_current:
-            crossover_strength = -0.5  # Bearish crossover
+            crossover_strength = -0.3  # Bearish crossover
         
-        return momentum + crossover_strength
+        # Add RSI signal
+        rsi = self.calculate_rsi(self.price_history[coin])
+        rsi_signal = 0.0
+        
+        if rsi < 35:  # Oversold - bullish signal
+            rsi_signal = 0.2
+        elif rsi > 65:  # Overbought - bearish signal 
+            rsi_signal = -0.2
+        elif rsi < 45:  # Mild oversold
+            rsi_signal = 0.1
+        elif rsi > 55:  # Mild overbought
+            rsi_signal = -0.1
+        
+        # Combine signals
+        total_signal = momentum + crossover_strength + rsi_signal
+        
+        return total_signal
     
     def check_exit_conditions(self, coin: str, current_price: float) -> Optional[str]:
         """Check if position should be exited."""
@@ -233,9 +280,14 @@ class OptimizedMomentumStrategy:
                 if not self.check_volume_filter(coin):
                     continue
                 
-                # Get momentum signal
-                momentum = self.get_momentum_signal(coin)
+                # Get momentum signal with market data
+                momentum = self.get_momentum_signal(coin, data)
                 
+                # Debug: Print momentum info every 10 cycles
+                if len(self.price_history[coin]) % 10 == 0:
+                    rsi = self.calculate_rsi(self.price_history[coin])
+                    print(f"🔍 {coin}: momentum={momentum:.4f}, threshold={self.momentum_threshold:.4f}, RSI={rsi:.1f}, price={current_price:.2f}")
+
                 # Generate entry signals
                 if momentum > self.momentum_threshold:
                     # Bullish momentum - Long entry

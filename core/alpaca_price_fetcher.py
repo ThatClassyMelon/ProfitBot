@@ -49,6 +49,7 @@ class AlpacaPriceFetcher:
             'AVAX': 'AVAX/USD'
         }
         
+        self.config = config  # Store config reference
         self.coins = list(config['coins'].keys())
         self.current_prices: Dict[str, float] = {}
         self.price_history: Dict[str, list] = {}
@@ -256,6 +257,19 @@ class AlpacaPriceFetcher:
     def get_current_price(self, coin: str) -> float:
         """Get current price for a specific coin."""
         return self.current_prices.get(coin, 0.0)
+    
+    def get_current_prices(self) -> Dict[str, float]:
+        """Get current prices for all coins."""
+        return self.current_prices.copy()
+    
+    def get_price(self, coin: str) -> float:
+        """Get price for specific coin (alias for get_current_price)."""
+        return self.get_current_price(coin)
+    
+    def get_price_history(self, coin: str, limit: int = 100) -> list:
+        """Get price history for specific coin."""
+        history = self.price_history.get(coin, [])
+        return [entry['price'] for entry in history[-limit:]]
     
     def _calculate_simple_rsi(self, prices: list, period: int = 14) -> float:
         """Calculate simple RSI."""
